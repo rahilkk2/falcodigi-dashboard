@@ -38,6 +38,33 @@ const recentClientsTableBody = document.querySelector('#recent-clients-table tbo
 const clientsLoader = document.getElementById('clients-loader');
 const overviewLoader = document.getElementById('overview-loader');
 
+// Modal
+const notesModal = document.getElementById('notes-modal');
+const notesModalBody = document.getElementById('notes-modal-body');
+const closeModalBtn = document.getElementById('close-modal-btn');
+const notesModalTitle = document.getElementById('notes-modal-title');
+
+// Payment Modal
+const paymentModal = document.getElementById('payment-modal');
+const closePaymentModalBtn = document.getElementById('close-payment-modal-btn');
+const paymentScreenshotInput = document.getElementById('payment-screenshot');
+const confirmPaymentBtn = document.getElementById('confirm-payment-btn');
+
+// Screenshot Viewer Modal
+const screenshotModal = document.getElementById('screenshot-modal');
+const closeScreenshotModalBtn = document.getElementById('close-screenshot-modal-btn');
+const screenshotViewerImg = document.getElementById('screenshot-viewer-img');
+
+// Confirm Modal
+const confirmModal = document.getElementById('confirm-modal');
+const confirmModalCancel = document.getElementById('confirm-modal-cancel');
+const confirmModalOk = document.getElementById('confirm-modal-ok');
+let confirmCallback = null;
+
+let pendingPaymentClientId = null;
+let pendingPaymentType = null;
+let currentScreenshotBase64 = null;
+
 // Metrics
 const metricTotal = document.getElementById('metric-total');
 const metricPending = document.getElementById('metric-pending');
@@ -92,6 +119,60 @@ function setupEventListeners() {
 
     // Add Client
     addClientForm.addEventListener('submit', handleAddClient);
+
+    // Modal
+    closeModalBtn.addEventListener('click', () => {
+        notesModal.classList.remove('active');
+    });
+
+    notesModal.addEventListener('click', (e) => {
+        if (e.target === notesModal) {
+            notesModal.classList.remove('active');
+        }
+    });
+
+    // Payment Modal
+    closePaymentModalBtn.addEventListener('click', closePaymentModal);
+    paymentModal.addEventListener('click', (e) => {
+        if (e.target === paymentModal) closePaymentModal();
+    });
+
+    paymentScreenshotInput.addEventListener('change', () => {
+        if (paymentScreenshotInput.files && paymentScreenshotInput.files[0]) {
+            confirmPaymentBtn.disabled = false;
+        } else {
+            confirmPaymentBtn.disabled = true;
+        }
+    });
+
+    confirmPaymentBtn.addEventListener('click', processPaymentScreenshot);
+
+    // Screenshot Modal
+    closeScreenshotModalBtn.addEventListener('click', () => {
+        screenshotModal.classList.remove('active');
+    });
+    screenshotModal.addEventListener('click', (e) => {
+        if (e.target === screenshotModal) screenshotModal.classList.remove('active');
+    });
+
+    // Confirm Modal
+    confirmModalCancel.addEventListener('click', () => {
+        confirmModal.classList.remove('active');
+        confirmCallback = null;
+    });
+    confirmModalOk.addEventListener('click', () => {
+        confirmModal.classList.remove('active');
+        if (confirmCallback) {
+            confirmCallback();
+            confirmCallback = null;
+        }
+    });
+}
+
+function showConfirmDialog(message, callback) {
+    document.getElementById('confirm-modal-message').textContent = message;
+    confirmCallback = callback;
+    confirmModal.classList.add('active');
 }
 
 // --- Authentication ---
@@ -141,7 +222,7 @@ function showDashboard() {
 async function fetchClients() {
     showLoaders(true);
     try {
-        const response = await fetch(API_URL);
+        const response = await fetch(API_URL, { cache: 'no-store' });
         if (!response.ok) throw new Error('Failed to fetch data');
         const data = await response.json();
         clientsData = data.reverse(); // Newest first
@@ -198,22 +279,156 @@ async function handleAddClient(e) {
     }
 }
 
-async function deleteClient(id) {
-    if (!confirm('Are you sure you want to delete this client?')) return;
+async function updateClientField(id, field, value) {
+    // Find client
+    const client = clientsData.find(c => c._id === id);
+    if (!client) return;
+
+    // Create a copy without _id for PUT request
+    const { _id, ...updateData } = client;
+    updateData[field] = value;
 
     try {
         const response = await fetch(`${API_URL}/${id}`, {
-            method: 'DELETE'
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(updateData)
         });
 
-        if (!response.ok) throw new Error('Failed to delete client');
+        if (!response.ok) throw new Error('Failed to update client');
         
-        // Refresh
-        fetchClients();
+        // Refresh locally and UI
+        client[field] = value;
+        renderDashboard();
     } catch (error) {
-        console.error('Error deleting client:', error);
-        alert('Failed to delete client.');
+        console.error('Error updating client:', error);
+        alert('Failed to update client action.');
     }
+}
+
+// Payment Methods
+function openPaymentModal(id, type) {
+    pendingPaymentClientId = id;
+    pendingPaymentType = type;
+    paymentScreenshotInput.value = '';
+    confirmPaymentBtn.disabled = true;
+    document.getElementById('payment-modal-title').textContent = type === 'Paid' ? 'Confirm Payment Done' : 'Confirm Advance Paid';
+    paymentModal.classList.add('active');
+}
+
+function closePaymentModal() {
+    paymentModal.classList.remove('active');
+    pendingPaymentClientId = null;
+    pendingPaymentType = null;
+    currentScreenshotBase64 = null;
+}
+
+function processPaymentScreenshot() {
+    const file = paymentScreenshotInput.files[0];
+    if (!file) return;
+
+    confirmPaymentBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+    confirmPaymentBtn.disabled = true;
+
+    const reader = new FileReader();
+    reader.onload = function(event) {
+        const img = new Image();
+        img.onload = function() {
+            // Resize logic via Canvas to avoid large JSON payloads
+            const canvas = document.createElement('canvas');
+            const MAX_WIDTH = 600;
+            const MAX_HEIGHT = 600;
+            let width = img.width;
+            let height = img.height;
+
+            if (width > height) {
+                if (width > MAX_WIDTH) {
+                    height *= MAX_WIDTH / width;
+                    width = MAX_WIDTH;
+                }
+            } else {
+                if (height > MAX_HEIGHT) {
+                    width *= MAX_HEIGHT / height;
+                    height = MAX_HEIGHT;
+                }
+            }
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            const base64String = canvas.toDataURL('image/jpeg', 0.6); // Compress
+            
+            // Send to backend
+            submitPaymentData(base64String);
+        };
+        img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+}
+
+async function submitPaymentData(base64String) {
+    const client = clientsData.find(c => c._id === pendingPaymentClientId);
+    if (!client) {
+        closePaymentModal();
+        return;
+    }
+
+    const { _id, ...updateData } = client;
+    updateData.paymentStatus = pendingPaymentType;
+    updateData.paymentScreenshot = base64String;
+
+    try {
+        const response = await fetch(`${API_URL}/${pendingPaymentClientId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updateData)
+        });
+
+        if (!response.ok) throw new Error('Failed to confirm payment');
+        
+        client.paymentStatus = pendingPaymentType;
+        client.paymentScreenshot = base64String;
+        renderDashboard();
+    } catch (error) {
+        console.error('Error saving payment:', error);
+        alert('Failed to save payment. Please try again.');
+    } finally {
+        confirmPaymentBtn.innerHTML = 'Confirm Payment';
+        closePaymentModal();
+    }
+}
+
+function viewScreenshot(base64Data) {
+    screenshotViewerImg.src = base64Data;
+    screenshotModal.classList.add('active');
+}
+
+function deleteClient(id) {
+    showConfirmDialog('Are you sure you want to delete this client? This action cannot be undone.', async () => {
+        // Optimistic UI update
+        const originalData = [...clientsData];
+        clientsData = clientsData.filter(c => c._id !== id);
+        renderDashboard();
+
+        try {
+            const response = await fetch(`${API_URL}/${id}`, {
+                method: 'DELETE'
+            });
+
+            if (!response.ok) throw new Error('Failed to delete client');
+            
+            // Refresh from server to ensure sync
+            fetchClients();
+        } catch (error) {
+            console.error('Error deleting client:', error);
+            clientsData = originalData; // Restore on error
+            renderDashboard();
+            alert('Failed to delete client.');
+        }
+    });
 }
 
 // --- Rendering & Logic ---
@@ -249,6 +464,15 @@ function formatDateDisplay(dateString) {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+function viewNotes(id) {
+    const client = clientsData.find(c => c._id === id);
+    if (client) {
+        notesModalTitle.textContent = `Notes: ${client.name}`;
+        notesModalBody.textContent = client.notes || 'No notes added for this client.';
+        notesModal.classList.add('active');
+    }
+}
+
 function renderClientsTable() {
     allClientsTableBody.innerHTML = '';
     
@@ -262,22 +486,52 @@ function renderClientsTable() {
         
         const fStatus = getFollowupStatusInfo(client.followup);
         
+        let paymentBadge = '';
+        if (client.paymentStatus === 'Paid') {
+            paymentBadge = `<div style="margin-top: 4px; display: flex; align-items: center; gap: 8px;">
+                                <span class="badge badge-paid">Payment Done</span>
+                                ${client.paymentScreenshot ? `<button class="btn-icon" style="width: 24px; height: 24px; font-size: 0.7rem;" title="View Receipt" onclick="viewScreenshot('${client.paymentScreenshot}')"><i class="fas fa-eye"></i></button>` : ''}
+                            </div>`;
+        } else if (client.paymentStatus === 'Advance') {
+            paymentBadge = `<div style="margin-top: 4px; display: flex; align-items: center; gap: 8px;">
+                                <span class="badge badge-advance">Advance Paid</span>
+                                ${client.paymentScreenshot ? `<button class="btn-icon" style="width: 24px; height: 24px; font-size: 0.7rem;" title="View Receipt" onclick="viewScreenshot('${client.paymentScreenshot}')"><i class="fas fa-eye"></i></button>` : ''}
+                            </div>`;
+        }
+
         tr.innerHTML = `
             <td>
                 <div class="client-name">${client.name}</div>
                 <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">Added by ${client.createdBy ? client.createdBy.split('_')[0] : 'Unknown'}</div>
             </td>
             <td>${client.phone}</td>
-            <td><span class="badge badge-neutral">${client.status}</span></td>
+            <td>
+                <span class="badge badge-neutral">${client.status}</span>
+                ${paymentBadge}
+            </td>
             <td>${client.priority || 'Medium'}</td>
             <td>
                 <div style="margin-bottom: 4px;">${formatDateDisplay(client.followup)}</div>
                 <span class="badge ${fStatus.class}">${fStatus.text}</span>
             </td>
             <td>
-                <button class="btn btn-danger" onclick="deleteClient('${client._id}')">
-                    <i class="fas fa-trash"></i>
-                </button>
+                <div class="action-buttons">
+                    <button class="btn-icon" title="View Notes" onclick="viewNotes('${client._id}')">
+                        <i class="fas fa-sticky-note"></i>
+                    </button>
+                    <button class="btn-icon" title="Payment Done" style="color: #1890ff; border-color: #1890ff;" onclick="openPaymentModal('${client._id}', 'Paid')">
+                        <i class="fas fa-check-double"></i>
+                    </button>
+                    <button class="btn-icon" title="Advance Paid" style="color: #eb2f96; border-color: #eb2f96;" onclick="openPaymentModal('${client._id}', 'Advance')">
+                        <i class="fas fa-hand-holding-usd"></i>
+                    </button>
+                    <button class="btn-icon btn-success" title="Follow Up Completed" onclick="updateClientField('${client._id}', 'followup', '')">
+                        <i class="fas fa-calendar-check"></i>
+                    </button>
+                    <button class="btn-icon btn-danger" title="Delete Client" onclick="deleteClient('${client._id}')">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
             </td>
         `;
         allClientsTableBody.appendChild(tr);
@@ -347,3 +601,10 @@ function showLoaders(show) {
 
 // Start app
 init();
+
+// Ensure global scope for inline event handlers
+window.deleteClient = deleteClient;
+window.updateClientField = updateClientField;
+window.openPaymentModal = openPaymentModal;
+window.viewScreenshot = viewScreenshot;
+window.viewNotes = viewNotes;
