@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FalcoDigi Works | CRM Dashboard</title>
+    <!-- Use specific favicon from the folder -->
+    <link rel="icon" href="favicon/WhatsApp Image 2026-04-30 at 8.29.41 PM.jpeg" type="image/jpeg">
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- Login View -->
+    <div id="login-view">
+        <div class="login-container card">
+            <img src="logo/WhatsApp Image 2026-04-30 at 8.29.41 PM.jpeg" alt="FalcoDigi Logo" class="login-logo" onerror="this.src='https://via.placeholder.com/80/C6A86B/FFFFFF?text=FD'">
+            <h1>Welcome Back</h1>
+            <p>Sign in to your agency dashboard</p>
+            
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" class="form-control" placeholder="Enter your username" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" class="form-control" placeholder="Enter your password" required>
+                </div>
+                <button type="submit" class="btn login-btn">Sign In <i class="fas fa-arrow-right"></i></button>
+                <div id="login-error"></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Dashboard View -->
+    <div id="dashboard-view" class="hidden">
+        
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <img src="logo/WhatsApp Image 2026-04-30 at 8.29.41 PM.jpeg" alt="Logo" class="sidebar-logo" onerror="this.src='https://via.placeholder.com/40/C6A86B/FFFFFF?text=FD'">
+                <span class="sidebar-brand">FalcoDigi</span>
+            </div>
+
+            <ul class="nav-links">
+                <li>
+                    <a href="#" class="nav-link active" data-target="overview">
+                        <i class="fas fa-chart-pie"></i> Overview
+                    </a>
+                </li>
+                <li>
+                    <a href="#" class="nav-link" data-target="add-client">
+                        <i class="fas fa-user-plus"></i> Add Client
+                    </a>
+                </li>
+                <li>
+                    <a href="#" class="nav-link" data-target="clients">
+                        <i class="fas fa-users"></i> Clients
+                    </a>
+                </li>
+            </ul>
+
+            <div class="logout-container">
+                <button id="logout-btn" class="logout-btn">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="topbar">
+                <div class="welcome-msg">
+                    <h2 id="welcome-text">Welcome, User</h2>
+                </div>
+                <div class="current-date" id="current-date">
+                    --
+                </div>
+            </div>
+
+            <div class="content-area">
+                
+                <!-- Overview Section -->
+                <section id="overview" class="view-section active">
+                    <div class="metrics-grid">
+                        <div class="metric-card card">
+                            <div class="metric-icon">
+                                <i class="fas fa-users"></i>
+                            </div>
+                            <div class="metric-info">
+                                <h3>Total Clients</h3>
+                                <p id="metric-total">0</p>
+                            </div>
+                        </div>
+                        <div class="metric-card card">
+                            <div class="metric-icon" style="color: var(--status-overdue); background: var(--status-overdue-bg);">
+                                <i class="fas fa-exclamation-circle"></i>
+                            </div>
+                            <div class="metric-info">
+                                <h3>Pending Follow-ups</h3>
+                                <p id="metric-pending">0</p>
+                            </div>
+                        </div>
+                        <div class="metric-card card">
+                            <div class="metric-icon" style="color: var(--status-today); background: var(--status-today-bg);">
+                                <i class="fas fa-briefcase"></i>
+                            </div>
+                            <div class="metric-info">
+                                <h3>Ongoing Work</h3>
+                                <p id="metric-ongoing">0</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="recent-clients-section">
+                        <div class="section-header">
+                            <h2>Recent Clients</h2>
+                            <button class="btn" onclick="document.querySelector('[data-target=\'clients\']').click()">View All</button>
+                        </div>
+                        <div class="card table-container">
+                            <table id="recent-clients-table">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Phone</th>
+                                        <th>Status</th>
+                                        <th>Follow-up</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Populated by JS -->
+                                </tbody>
+                            </table>
+                            <div id="overview-loader" class="loader-container"><div class="loader"></div></div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Add Client Section -->
+                <section id="add-client" class="view-section">
+                    <div class="section-header">
+                        <h2>Add New Client</h2>
+                    </div>
+                    <div class="card">
+                        <form id="add-client-form">
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label for="client-name">Full Name *</label>
+                                    <input type="text" id="client-name" class="form-control" required placeholder="John Doe">
+                                </div>
+                                <div class="form-group">
+                                    <label for="client-phone">Phone Number *</label>
+                                    <input type="tel" id="client-phone" class="form-control" required placeholder="+1 234 567 8900">
+                                </div>
+                                <div class="form-group">
+                                    <label for="client-status">Status *</label>
+                                    <select id="client-status" class="form-control" required>
+                                        <option value="Lead">Lead</option>
+                                        <option value="Ongoing">Ongoing Work</option>
+                                        <option value="Completed">Completed</option>
+                                        <option value="Lost">Lost</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="client-followup">Follow-up Date *</label>
+                                    <input type="date" id="client-followup" class="form-control" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="client-priority">Priority</label>
+                                    <select id="client-priority" class="form-control">
+                                        <option value="High">High</option>
+                                        <option value="Medium" selected>Medium</option>
+                                        <option value="Low">Low</option>
+                                    </select>
+                                </div>
+                                <div class="form-group form-full">
+                                    <label for="client-notes">Notes</label>
+                                    <textarea id="client-notes" class="form-control" placeholder="Any special requirements or notes..."></textarea>
+                                </div>
+                            </div>
+                            <div class="form-actions">
+                                <button type="reset" class="btn" style="background: transparent; color: var(--text-secondary); border: 1px solid #ddd;">Clear</button>
+                                <button type="submit" class="btn" id="save-client-btn"><i class="fas fa-save"></i> Save Client</button>
+                            </div>
+                        </form>
+                    </div>
+                </section>
+
+                <!-- Clients Section -->
+                <section id="clients" class="view-section">
+                    <div class="section-header">
+                        <h2>All Clients</h2>
+                        <button class="btn" onclick="document.querySelector('[data-target=\'add-client\']').click()"><i class="fas fa-plus"></i> Add New</button>
+                    </div>
+                    <div class="card table-container">
+                        <table id="all-clients-table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Phone</th>
+                                    <th>Status</th>
+                                    <th>Priority</th>
+                                    <th>Follow-up</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Populated by JS -->
+                            </tbody>
+                        </table>
+                        <div id="clients-loader" class="loader-container"><div class="loader"></div></div>
+                    </div>
+                </section>
+
+            </div>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
