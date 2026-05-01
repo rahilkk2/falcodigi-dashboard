@@ -254,13 +254,6 @@ function showDashboard() {
 async function handleAddClient(e) {
     e.preventDefault();
     
-    // Check if Firebase is ready
-    if (!window.firebaseAPI || !window.firebaseAPI.getDb()) {
-        alert('Firebase is loading. Please wait a moment and try again.');
-        console.error('Firebase not ready yet');
-        return;
-    }
-    
     const clientData = {
         name: document.getElementById('client-name').value.trim(),
         phone: document.getElementById('client-phone').value.trim(),

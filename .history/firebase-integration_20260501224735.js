@@ -147,15 +147,13 @@ async function handleFirebaseLogout() {
 // CREATE: Add new client
 async function addClientToFirebase(clientData) {
     if (!db) {
-        console.error('❌ Database not initialized');
-        throw new Error('Database not initialized. Firebase not loaded properly.');
+        console.error('Database not initialized');
+        throw new Error('Database not initialized');
     }
     
     try {
         const username = sessionStorage.getItem('fdw_user') || 'Unknown';
         const displayName = username.split('_')[0];
-        
-        console.log('📝 Saving client:', clientData);
         
         const docRef = await db.collection('clients').add({
             ...clientData,
@@ -167,8 +165,6 @@ async function addClientToFirebase(clientData) {
         return docRef.id;
     } catch (error) {
         console.error('❌ Error adding client:', error);
-        console.error('Error code:', error.code);
-        console.error('Error message:', error.message);
         throw error;
     }
 }
