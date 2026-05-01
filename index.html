@@ -37,6 +37,9 @@
     <!-- Dashboard View -->
     <div id="dashboard-view" class="hidden">
         
+        <!-- Sidebar Overlay for Mobile -->
+        <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
         <!-- Sidebar -->
         <aside class="sidebar">
             <div class="sidebar-header">
@@ -60,6 +63,12 @@
                         <i class="fas fa-users"></i> Clients
                     </a>
                 </li>
+                <li class="sidebar-divider" style="margin: 16px 0; border-top: 1px solid rgba(198, 168, 107, 0.2);"></li>
+                <li>
+                    <a href="https://docs.google.com/spreadsheets/d/1u3eRr9C0HstgWaU8hFHXBlovRnilPF_7zmqgngTO6cI/edit?usp=sharing" target="_blank" class="nav-link" style="color: #388e3c; background-color: rgba(56, 142, 60, 0.05);">
+                        <i class="fas fa-file-excel"></i> View Backup
+                    </a>
+                </li>
             </ul>
 
             <div class="logout-container">
@@ -72,6 +81,9 @@
         <!-- Main Content -->
         <main class="main-content">
             <div class="topbar">
+                <div class="mobile-menu-btn" id="mobile-menu-btn">
+                    <i class="fas fa-bars"></i>
+                </div>
                 <div class="welcome-msg">
                     <h2 id="welcome-text">Welcome, User</h2>
                 </div>
@@ -190,8 +202,12 @@
 
                 <!-- Clients Section -->
                 <section id="clients" class="view-section">
-                    <div class="section-header">
+                    <div class="section-header" style="flex-wrap: wrap; gap: 16px;">
                         <h2>All Clients</h2>
+                        <div class="search-container">
+                            <i class="fas fa-search"></i>
+                            <input type="text" id="client-search" class="form-control" placeholder="Search by name or phone...">
+                        </div>
                         <button class="btn" onclick="document.querySelector('[data-target=\'add-client\']').click()"><i class="fas fa-plus"></i> Add New</button>
                     </div>
                     <div class="card table-container">

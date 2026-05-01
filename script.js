@@ -13,6 +13,12 @@ const USERS = {
 // Using the endpoint provisioned during planning
 const API_URL = 'https://crudcrud.com/api/99c7fcd8ae1e4425a8570cbe6054ec50/clients';
 
+// Google Sheets Web App URL (User will replace this)
+const GOOGLE_SHEETS_WEBHOOK = 'https://script.google.com/macros/s/AKfycbyg6CVogAaWTHgQFRaoFwHBKQPeWE46EWsmP4bRFrUd9bdBFB7wNhlLenc-05GDe9GrSA/exec';
+
+// Local cache key
+const LOCAL_STORAGE_KEY = 'fdw_clients_cache';
+
 // State
 let clientsData = [];
 let currentUser = null;
@@ -29,6 +35,10 @@ const navLinks = document.querySelectorAll('.nav-link');
 const viewSections = document.querySelectorAll('.view-section');
 const addClientForm = document.getElementById('add-client-form');
 const saveClientBtn = document.getElementById('save-client-btn');
+const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+const sidebar = document.querySelector('.sidebar');
+const sidebarOverlay = document.getElementById('sidebar-overlay');
+const clientSearchInput = document.getElementById('client-search');
 
 // Tables
 const allClientsTableBody = document.querySelector('#all-clients-table tbody');
@@ -99,8 +109,10 @@ function setupEventListeners() {
     // Navigation
     navLinks.forEach(link => {
         link.addEventListener('click', (e) => {
-            e.preventDefault();
             const target = e.currentTarget.getAttribute('data-target');
+            if (!target) return; // Allow normal links (like Backup) to work
+            
+            e.preventDefault();
             
             // Update active link
             navLinks.forEach(l => l.classList.remove('active'));
@@ -110,12 +122,40 @@ function setupEventListeners() {
             viewSections.forEach(sec => sec.classList.remove('active'));
             document.getElementById(target).classList.add('active');
 
+            // Close mobile sidebar if open
+            if (window.innerWidth <= 768) {
+                sidebar.classList.remove('mobile-open');
+                if(sidebarOverlay) sidebarOverlay.classList.remove('active');
+            }
+
             // Refresh data if going to a data view
             if(target === 'clients' || target === 'overview') {
                 fetchClients();
             }
         });
     });
+
+    // Mobile Menu
+    if (mobileMenuBtn) {
+        mobileMenuBtn.addEventListener('click', () => {
+            sidebar.classList.add('mobile-open');
+            sidebarOverlay.classList.add('active');
+        });
+    }
+
+    if (sidebarOverlay) {
+        sidebarOverlay.addEventListener('click', () => {
+            sidebar.classList.remove('mobile-open');
+            sidebarOverlay.classList.remove('active');
+        });
+    }
+
+    // Client Search
+    if (clientSearchInput) {
+        clientSearchInput.addEventListener('input', (e) => {
+            renderClientsTable(e.target.value.trim().toLowerCase());
+        });
+    }
 
     // Add Client
     addClientForm.addEventListener('submit', handleAddClient);
@@ -226,14 +266,44 @@ async function fetchClients() {
         if (!response.ok) throw new Error('Failed to fetch data');
         const data = await response.json();
         clientsData = data.reverse(); // Newest first
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(clientsData));
         renderDashboard();
     } catch (error) {
-        console.error('Error fetching clients:', error);
-        // Do not crash, just show empty
-        clientsData = [];
+        console.error('API Error fetching clients, falling back to local storage:', error);
+        const cached = localStorage.getItem(LOCAL_STORAGE_KEY);
+        if (cached) {
+            clientsData = JSON.parse(cached);
+        } else {
+            clientsData = [];
+        }
         renderDashboard();
     } finally {
         showLoaders(false);
+    }
+}
+
+async function backupToGoogleSheets(action, clientData) {
+    if (GOOGLE_SHEETS_WEBHOOK === 'YOUR_GOOGLE_SHEETS_WEBAPP_URL_HERE') {
+        console.warn('Google Sheets Webhook URL not set. Skipping backup.');
+        return;
+    }
+    
+    try {
+        // Send data to Google Sheets without blocking UI
+        fetch(GOOGLE_SHEETS_WEBHOOK, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                action: action,
+                timestamp: new Date().toISOString(),
+                client: clientData
+            })
+        });
+    } catch (e) {
+        console.error('Failed to backup to Google Sheets', e);
     }
 }
 
@@ -266,13 +336,30 @@ async function handleAddClient(e) {
         if (!response.ok) throw new Error('Failed to save client');
         
         // Success
+        const responseData = await response.json();
+        clientsData.unshift(responseData); // Add to local state
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(clientsData)); // Update cache
+        
+        // Backup to Google Sheets
+        backupToGoogleSheets('ADD', responseData);
+
         addClientForm.reset();
         
         // Navigate to clients view automatically
         document.querySelector('[data-target="clients"]').click();
     } catch (error) {
-        console.error('Error saving client:', error);
-        alert('Failed to save client. Please try again.');
+        console.error('API Error saving client, saving locally instead:', error);
+        
+        // Fallback to local save
+        clientData._id = 'local_' + Date.now();
+        clientsData.unshift(clientData);
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(clientsData));
+        
+        // Backup to Google Sheets
+        backupToGoogleSheets('ADD_LOCAL', clientData);
+        
+        addClientForm.reset();
+        document.querySelector('[data-target="clients"]').click();
     } finally {
         saveClientBtn.innerHTML = '<i class="fas fa-save"></i> Save Client';
         saveClientBtn.disabled = false;
@@ -301,10 +388,16 @@ async function updateClientField(id, field, value) {
         
         // Refresh locally and UI
         client[field] = value;
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(clientsData));
+        backupToGoogleSheets('UPDATE', client);
         renderDashboard();
     } catch (error) {
-        console.error('Error updating client:', error);
-        alert('Failed to update client action.');
+        console.error('Error updating client, falling back to local save:', error);
+        // Fallback local update
+        client[field] = value;
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(clientsData));
+        backupToGoogleSheets('UPDATE_LOCAL', client);
+        renderDashboard();
     }
 }
 
@@ -420,13 +513,16 @@ function deleteClient(id) {
 
             if (!response.ok) throw new Error('Failed to delete client');
             
+            // Sync local storage
+            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(clientsData));
+            backupToGoogleSheets('DELETE', { _id: id });
+            
             // Refresh from server to ensure sync
             fetchClients();
         } catch (error) {
-            console.error('Error deleting client:', error);
-            clientsData = originalData; // Restore on error
-            renderDashboard();
-            alert('Failed to delete client.');
+            console.error('API Error deleting client, removing locally:', error);
+            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(clientsData));
+            backupToGoogleSheets('DELETE_LOCAL', { _id: id });
         }
     });
 }
@@ -473,15 +569,27 @@ function viewNotes(id) {
     }
 }
 
-function renderClientsTable() {
+function renderClientsTable(searchQuery = '') {
     allClientsTableBody.innerHTML = '';
     
-    if (clientsData.length === 0) {
-        allClientsTableBody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-secondary);">No clients found. Add a client to get started.</td></tr>';
+    let filteredClients = clientsData;
+    if (searchQuery) {
+        filteredClients = clientsData.filter(c => 
+            c.name.toLowerCase().includes(searchQuery) || 
+            c.phone.includes(searchQuery)
+        );
+    }
+    
+    if (filteredClients.length === 0) {
+        if (searchQuery) {
+            allClientsTableBody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-secondary);">No clients match your search.</td></tr>';
+        } else {
+            allClientsTableBody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-secondary);">No clients found. Add a client to get started.</td></tr>';
+        }
         return;
     }
 
-    clientsData.forEach(client => {
+    filteredClients.forEach(client => {
         const tr = document.createElement('tr');
         
         const fStatus = getFollowupStatusInfo(client.followup);
