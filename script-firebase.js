@@ -248,6 +248,11 @@ function showDashboard() {
     const userName = sessionStorage.getItem('fdw_user_name') || 'User';
     const capitalizedName = userName.charAt(0).toUpperCase() + userName.slice(1);
     welcomeText.textContent = `Welcome, ${capitalizedName}`;
+    
+    // Ensure dashboard is rendered and loaders are hidden after login
+    if (typeof renderDashboard === 'function') {
+        renderDashboard();
+    }
 }
 
 // ========== CLIENT OPERATIONS ==========
@@ -423,6 +428,12 @@ function deleteClient(id) {
 function renderDashboard() {
     renderClientsTable();
     renderOverview();
+    
+    // Hide loaders once data is rendered
+    if (clientsLoader) clientsLoader.style.display = 'none';
+    if (overviewLoader) overviewLoader.style.display = 'none';
+    if (allClientsTableBody) allClientsTableBody.style.display = '';
+    if (recentClientsTableBody) recentClientsTableBody.style.display = '';
 }
 
 function getFollowupStatusInfo(dateString) {
