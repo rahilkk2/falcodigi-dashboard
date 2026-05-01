@@ -1,29 +1,14 @@
 /**
- * FalcoDigi Works CRM - Application Logic
+ * FalcoDigi Works CRM - Main Application Logic (Firebase Version)
  */
 
-// --- Configuration ---
-// Valid Users
-const USERS = {
+// ========== VALID USERS ==========
+const VALID_USERS = {
     'ayaan_fdw123': '123456',
     'rahil_fdw123': '123456'
 };
 
-// API Endpoint (CrudCrud - Free Shared DB for testing)
-// Using the endpoint provisioned during planning
-const API_URL = 'https://crudcrud.com/api/30f1cd53e5a1456eac2f35022f9be9f4/clients';
-
-// Google Sheets Web App URL (User will replace this)
-const GOOGLE_SHEETS_WEBHOOK = 'https://script.google.com/macros/s/AKfycbyg6CVogAaWTHgQFRaoFwHBKQPeWE46EWsmP4bRFrUd9bdBFB7wNhlLenc-05GDe9GrSA/exec';
-
-// Local cache key
-const LOCAL_STORAGE_KEY = 'fdw_clients_cache';
-
-// State
-let clientsData = [];
-let currentUser = null;
-
-// --- DOM Elements ---
+// ========== DOM ELEMENTS ==========
 const loginView = document.getElementById('login-view');
 const dashboardView = document.getElementById('dashboard-view');
 const loginForm = document.getElementById('login-form');
@@ -60,7 +45,7 @@ const closePaymentModalBtn = document.getElementById('close-payment-modal-btn');
 const paymentScreenshotInput = document.getElementById('payment-screenshot');
 const confirmPaymentBtn = document.getElementById('confirm-payment-btn');
 
-// Screenshot Viewer Modal
+// Screenshot Modal
 const screenshotModal = document.getElementById('screenshot-modal');
 const closeScreenshotModalBtn = document.getElementById('close-screenshot-modal-btn');
 const screenshotViewerImg = document.getElementById('screenshot-viewer-img');
@@ -69,33 +54,34 @@ const screenshotViewerImg = document.getElementById('screenshot-viewer-img');
 const confirmModal = document.getElementById('confirm-modal');
 const confirmModalCancel = document.getElementById('confirm-modal-cancel');
 const confirmModalOk = document.getElementById('confirm-modal-ok');
-let confirmCallback = null;
-
-let pendingPaymentClientId = null;
-let pendingPaymentType = null;
-let currentScreenshotBase64 = null;
 
 // Metrics
 const metricTotal = document.getElementById('metric-total');
 const metricPending = document.getElementById('metric-pending');
 const metricOngoing = document.getElementById('metric-ongoing');
 
-// --- Initialization ---
+// State
+let confirmCallback = null;
+let pendingPaymentClientId = null;
+let pendingPaymentType = null;
+let currentScreenshotBase64 = null;
+
+// ========== INITIALIZATION ==========
 function init() {
-    // Check if logged in
+    // Check if user is logged in
     const sessionUser = sessionStorage.getItem('fdw_user');
     if (sessionUser) {
-        currentUser = sessionUser;
+        window.firebaseAPI.setCurrentUser(sessionUser);
         showDashboard();
     } else {
         showLogin();
     }
 
-    // Set Date
+    // Set current date
     const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
     currentDateEl.textContent = new Date().toLocaleDateString('en-US', options);
 
-    // Event Listeners
+    // Setup event listeners
     setupEventListeners();
 }
 
@@ -110,27 +96,19 @@ function setupEventListeners() {
     navLinks.forEach(link => {
         link.addEventListener('click', (e) => {
             const target = e.currentTarget.getAttribute('data-target');
-            if (!target) return; // Allow normal links (like Backup) to work
+            if (!target) return;
             
             e.preventDefault();
             
-            // Update active link
             navLinks.forEach(l => l.classList.remove('active'));
             e.currentTarget.classList.add('active');
             
-            // Update view
             viewSections.forEach(sec => sec.classList.remove('active'));
             document.getElementById(target).classList.add('active');
 
-            // Close mobile sidebar if open
             if (window.innerWidth <= 768) {
                 sidebar.classList.remove('mobile-open');
                 if(sidebarOverlay) sidebarOverlay.classList.remove('active');
-            }
-
-            // Refresh data if going to a data view
-            if(target === 'clients' || target === 'overview') {
-                fetchClients();
             }
         });
     });
@@ -157,10 +135,10 @@ function setupEventListeners() {
         });
     }
 
-    // Add Client
+    // Add Client Form
     addClientForm.addEventListener('submit', handleAddClient);
 
-    // Modal
+    // Notes Modal
     closeModalBtn.addEventListener('click', () => {
         notesModal.classList.remove('active');
     });
@@ -191,6 +169,7 @@ function setupEventListeners() {
     closeScreenshotModalBtn.addEventListener('click', () => {
         screenshotModal.classList.remove('active');
     });
+
     screenshotModal.addEventListener('click', (e) => {
         if (e.target === screenshotModal) screenshotModal.classList.remove('active');
     });
@@ -200,6 +179,7 @@ function setupEventListeners() {
         confirmModal.classList.remove('active');
         confirmCallback = null;
     });
+
     confirmModalOk.addEventListener('click', () => {
         confirmModal.classList.remove('active');
         if (confirmCallback) {
@@ -209,35 +189,52 @@ function setupEventListeners() {
     });
 }
 
-function showConfirmDialog(message, callback) {
-    document.getElementById('confirm-modal-message').textContent = message;
-    confirmCallback = callback;
-    confirmModal.classList.add('active');
-}
-
-// --- Authentication ---
-function handleLogin(e) {
+// ========== AUTHENTICATION ==========
+async function handleLogin(e) {
     e.preventDefault();
+    
     const username = document.getElementById('username').value.trim();
     const password = document.getElementById('password').value.trim();
 
-    if (USERS[username] && USERS[username] === password) {
-        // Success
-        sessionStorage.setItem('fdw_user', username);
-        currentUser = username;
-        loginError.textContent = '';
-        loginForm.reset();
-        showDashboard();
-    } else {
-        // Error
-        loginError.textContent = 'Invalid username or password.';
+    if (!username || !password) {
+        loginError.textContent = 'Please enter username and password.';
+        return;
+    }
+
+    loginForm.style.pointerEvents = 'none';
+    loginError.textContent = 'Signing in...';
+
+    try {
+        // Validate against local users
+        if (VALID_USERS[username] && VALID_USERS[username] === password) {
+            // Success - store session
+            sessionStorage.setItem('fdw_user', username);
+            sessionStorage.setItem('fdw_user_name', username.split('_')[0]);
+            
+            loginError.textContent = '';
+            loginForm.reset();
+            showDashboard();
+        } else {
+            loginError.textContent = 'Invalid username or password.';
+        }
+    } catch (error) {
+        loginError.textContent = 'Login failed. Please try again.';
+        console.error('Login error:', error);
+    } finally {
+        loginForm.style.pointerEvents = 'auto';
     }
 }
 
-function handleLogout() {
-    sessionStorage.removeItem('fdw_user');
-    currentUser = null;
-    showLogin();
+async function handleLogout() {
+    try {
+        // Clear session
+        sessionStorage.removeItem('fdw_user');
+        sessionStorage.removeItem('fdw_user_name');
+        showLogin();
+    } catch (error) {
+        console.error('Logout error:', error);
+        alert('Logout failed. Please try again.');
+    }
 }
 
 function showLogin() {
@@ -249,85 +246,12 @@ function showDashboard() {
     loginView.classList.add('hidden');
     dashboardView.classList.remove('hidden');
     
-    // Format username (e.g. ayaan_fdw123 -> Ayaan)
-    const displayName = currentUser.split('_')[0];
-    const capitalizedName = displayName.charAt(0).toUpperCase() + displayName.slice(1);
+    const userName = sessionStorage.getItem('fdw_user_name') || 'User';
+    const capitalizedName = userName.charAt(0).toUpperCase() + userName.slice(1);
     welcomeText.textContent = `Welcome, ${capitalizedName}`;
-    
-    // Initial data fetch
-    fetchClients();
 }
 
-// --- API Operations ---
-async function fetchClients() {
-    showLoaders(true);
-    try {
-        // 1. Sync offline data before fetching (prevent data loss)
-        const cached = localStorage.getItem(LOCAL_STORAGE_KEY);
-        if (cached) {
-            try {
-                const cachedData = JSON.parse(cached);
-                const unsyncedClients = cachedData.filter(c => c._id && c._id.toString().startsWith('local_'));
-                
-                for (const client of unsyncedClients) {
-                    const { _id, ...postData } = client;
-                    await fetch(API_URL, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(postData)
-                    });
-                }
-            } catch (e) {
-                console.error('Error syncing local data:', e);
-            }
-        }
-
-        // 2. Fetch fresh data
-        const response = await fetch(API_URL, { cache: 'no-store' });
-        if (!response.ok) throw new Error('Failed to fetch data');
-        const data = await response.json();
-        clientsData = data.reverse(); // Newest first
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(clientsData));
-        renderDashboard();
-    } catch (error) {
-        console.error('API Error fetching clients, falling back to local storage:', error);
-        const cached = localStorage.getItem(LOCAL_STORAGE_KEY);
-        if (cached) {
-            clientsData = JSON.parse(cached);
-        } else {
-            clientsData = [];
-        }
-        renderDashboard();
-    } finally {
-        showLoaders(false);
-    }
-}
-
-async function backupToGoogleSheets(action, clientData) {
-    if (GOOGLE_SHEETS_WEBHOOK === 'YOUR_GOOGLE_SHEETS_WEBAPP_URL_HERE') {
-        console.warn('Google Sheets Webhook URL not set. Skipping backup.');
-        return;
-    }
-    
-    try {
-        // Send data to Google Sheets without blocking UI
-        fetch(GOOGLE_SHEETS_WEBHOOK, {
-            method: 'POST',
-            mode: 'no-cors',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                action: action,
-                timestamp: new Date().toISOString(),
-                client: clientData
-            })
-        });
-    } catch (e) {
-        console.error('Failed to backup to Google Sheets', e);
-    }
-}
-
+// ========== CLIENT OPERATIONS ==========
 async function handleAddClient(e) {
     e.preventDefault();
     
@@ -338,91 +262,67 @@ async function handleAddClient(e) {
         followup: document.getElementById('client-followup').value,
         priority: document.getElementById('client-priority').value,
         notes: document.getElementById('client-notes').value.trim(),
-        createdAt: new Date().toISOString(),
-        createdBy: currentUser
+        paymentStatus: '',
+        paymentScreenshot: ''
     };
+
+    // Validate
+    if (!clientData.name || !clientData.phone || !clientData.status || !clientData.followup) {
+        alert('Please fill in all required fields.');
+        return;
+    }
 
     saveClientBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
     saveClientBtn.disabled = true;
 
     try {
-        const response = await fetch(API_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(clientData)
-        });
-
-        if (!response.ok) throw new Error('Failed to save client');
+        await window.firebaseAPI.addClient(clientData);
         
-        // Success
-        const responseData = await response.json();
-        clientsData.unshift(responseData); // Add to local state
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(clientsData)); // Update cache
-        
-        // Backup to Google Sheets
-        backupToGoogleSheets('ADD', responseData);
-
+        // Clear form and show feedback
         addClientForm.reset();
         
-        // Navigate to clients view automatically
+        // Navigate to clients view
         document.querySelector('[data-target="clients"]').click();
+        
+        // Show success message
+        showNotification('Client added successfully!', 'success');
     } catch (error) {
-        console.error('API Error saving client, saving locally instead:', error);
-        
-        // Fallback to local save
-        clientData._id = 'local_' + Date.now();
-        clientsData.unshift(clientData);
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(clientsData));
-        
-        // Backup to Google Sheets
-        backupToGoogleSheets('ADD_LOCAL', clientData);
-        
-        addClientForm.reset();
-        document.querySelector('[data-target="clients"]').click();
+        console.error('Error adding client:', error);
+        alert('Failed to add client. Please try again.');
+        loginError.textContent = 'Error: ' + error.message;
     } finally {
         saveClientBtn.innerHTML = '<i class="fas fa-save"></i> Save Client';
         saveClientBtn.disabled = false;
     }
 }
 
-async function updateClientField(id, field, value) {
-    // Find client
-    const client = clientsData.find(c => c._id === id);
-    if (!client) return;
-
-    // Create a copy without _id for PUT request
-    const { _id, ...updateData } = client;
-    updateData[field] = value;
-
+async function updateClientFieldFirebase(id, field, value) {
     try {
-        const response = await fetch(`${API_URL}/${id}`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(updateData)
-        });
-
-        if (!response.ok) throw new Error('Failed to update client');
-        
-        // Refresh locally and UI
-        client[field] = value;
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(clientsData));
-        backupToGoogleSheets('UPDATE', client);
-        renderDashboard();
+        await window.firebaseAPI.updateClient(id, { [field]: value });
+        // UI will update automatically via real-time listener
     } catch (error) {
-        console.error('Error updating client, falling back to local save:', error);
-        // Fallback local update
-        client[field] = value;
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(clientsData));
-        backupToGoogleSheets('UPDATE_LOCAL', client);
-        renderDashboard();
+        console.error('Error updating client:', error);
+        alert('Failed to update client. Please try again.');
     }
 }
 
-// Payment Methods
+async function deleteClientConfirmed(id) {
+    try {
+        await window.firebaseAPI.deleteClient(id);
+        // UI will update automatically via real-time listener
+    } catch (error) {
+        console.error('Error deleting client:', error);
+        alert('Failed to delete client. Please try again.');
+    }
+}
+
+function showConfirmDialog(message, callback) {
+    document.getElementById('confirm-modal-message').textContent = message;
+    confirmCallback = callback;
+    confirmModal.classList.add('active');
+}
+
+// ========== PAYMENT HANDLING ==========
 function openPaymentModal(id, type) {
     pendingPaymentClientId = id;
     pendingPaymentType = type;
@@ -450,7 +350,7 @@ function processPaymentScreenshot() {
     reader.onload = function(event) {
         const img = new Image();
         img.onload = function() {
-            // Resize logic via Canvas to avoid large JSON payloads
+            // Resize via Canvas
             const canvas = document.createElement('canvas');
             const MAX_WIDTH = 600;
             const MAX_HEIGHT = 600;
@@ -468,14 +368,13 @@ function processPaymentScreenshot() {
                     height = MAX_HEIGHT;
                 }
             }
+            
             canvas.width = width;
             canvas.height = height;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, width, height);
             
-            const base64String = canvas.toDataURL('image/jpeg', 0.6); // Compress
-            
-            // Send to backend
+            const base64String = canvas.toDataURL('image/jpeg', 0.6);
             submitPaymentData(base64String);
         };
         img.src = event.target.result;
@@ -484,34 +383,21 @@ function processPaymentScreenshot() {
 }
 
 async function submitPaymentData(base64String) {
-    const client = clientsData.find(c => c._id === pendingPaymentClientId);
-    if (!client) {
-        closePaymentModal();
-        return;
-    }
-
-    const { _id, ...updateData } = client;
-    updateData.paymentStatus = pendingPaymentType;
-    updateData.paymentScreenshot = base64String;
-
     try {
-        const response = await fetch(`${API_URL}/${pendingPaymentClientId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(updateData)
+        await window.firebaseAPI.updateClient(pendingPaymentClientId, {
+            paymentStatus: pendingPaymentType,
+            paymentScreenshot: base64String
         });
-
-        if (!response.ok) throw new Error('Failed to confirm payment');
         
-        client.paymentStatus = pendingPaymentType;
-        client.paymentScreenshot = base64String;
-        renderDashboard();
+        confirmPaymentBtn.innerHTML = 'Confirm Payment';
+        closePaymentModal();
+        showNotification('Payment recorded successfully!', 'success');
     } catch (error) {
         console.error('Error saving payment:', error);
         alert('Failed to save payment. Please try again.');
     } finally {
         confirmPaymentBtn.innerHTML = 'Confirm Payment';
-        closePaymentModal();
+        confirmPaymentBtn.disabled = false;
     }
 }
 
@@ -521,34 +407,13 @@ function viewScreenshot(base64Data) {
 }
 
 function deleteClient(id) {
-    showConfirmDialog('Are you sure you want to delete this client? This action cannot be undone.', async () => {
-        // Optimistic UI update
-        const originalData = [...clientsData];
-        clientsData = clientsData.filter(c => c._id !== id);
-        renderDashboard();
-
-        try {
-            const response = await fetch(`${API_URL}/${id}`, {
-                method: 'DELETE'
-            });
-
-            if (!response.ok) throw new Error('Failed to delete client');
-            
-            // Sync local storage
-            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(clientsData));
-            backupToGoogleSheets('DELETE', { _id: id });
-            
-            // Refresh from server to ensure sync
-            fetchClients();
-        } catch (error) {
-            console.error('API Error deleting client, removing locally:', error);
-            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(clientsData));
-            backupToGoogleSheets('DELETE_LOCAL', { _id: id });
-        }
-    });
+    showConfirmDialog(
+        'Are you sure you want to delete this client? This action cannot be undone.',
+        () => deleteClientConfirmed(id)
+    );
 }
 
-// --- Rendering & Logic ---
+// ========== RENDERING ==========
 function renderDashboard() {
     renderClientsTable();
     renderOverview();
@@ -558,20 +423,20 @@ function getFollowupStatusInfo(dateString) {
     if (!dateString) return { class: 'badge-neutral', text: 'No Date' };
 
     const today = new Date();
-    today.setHours(0, 0, 0, 0); // Normalize to start of day
+    today.setHours(0, 0, 0, 0);
 
     const followupDate = new Date(dateString);
-    followupDate.setHours(0, 0, 0, 0); // Normalize to start of day
+    followupDate.setHours(0, 0, 0, 0);
 
     const diffTime = followupDate.getTime() - today.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
     if (diffDays < 0) {
-        return { class: 'badge-overdue', text: `Overdue` }; // Red
+        return { class: 'badge-overdue', text: `Overdue` };
     } else if (diffDays === 0) {
-        return { class: 'badge-today', text: `Today` }; // Yellow
+        return { class: 'badge-today', text: `Today` };
     } else {
-        return { class: 'badge-upcoming', text: `In ${diffDays} days` }; // Green
+        return { class: 'badge-upcoming', text: `In ${diffDays} days` };
     }
 }
 
@@ -582,7 +447,7 @@ function formatDateDisplay(dateString) {
 }
 
 function viewNotes(id) {
-    const client = clientsData.find(c => c._id === id);
+    const client = window.firebaseAPI.getClientById(id);
     if (client) {
         notesModalTitle.textContent = `Notes: ${client.name}`;
         notesModalBody.textContent = client.notes || 'No notes added for this client.';
@@ -591,11 +456,12 @@ function viewNotes(id) {
 }
 
 function renderClientsTable(searchQuery = '') {
+    const clients = window.firebaseAPI.getClients();
     allClientsTableBody.innerHTML = '';
     
-    let filteredClients = clientsData;
+    let filteredClients = clients;
     if (searchQuery) {
-        filteredClients = clientsData.filter(c => 
+        filteredClients = clients.filter(c => 
             c.name.toLowerCase().includes(searchQuery) || 
             c.phone.includes(searchQuery)
         );
@@ -630,15 +496,15 @@ function renderClientsTable(searchQuery = '') {
 
         tr.innerHTML = `
             <td>
-                <div class="client-name">${client.name}</div>
-                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">Added by ${client.createdBy ? client.createdBy.split('_')[0] : 'Unknown'}</div>
+                <div class="client-name">${escapeHtml(client.name)}</div>
+                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">Added by ${escapeHtml(client.createdBy || 'Unknown')}</div>
             </td>
-            <td>${client.phone}</td>
+            <td>${escapeHtml(client.phone)}</td>
             <td>
-                <span class="badge badge-neutral">${client.status}</span>
+                <span class="badge badge-neutral">${escapeHtml(client.status)}</span>
                 ${paymentBadge}
             </td>
-            <td>${client.priority || 'Medium'}</td>
+            <td>${escapeHtml(client.priority || 'Medium')}</td>
             <td>
                 <div style="margin-bottom: 4px;">${formatDateDisplay(client.followup)}</div>
                 <span class="badge ${fStatus.class}">${fStatus.text}</span>
@@ -654,7 +520,7 @@ function renderClientsTable(searchQuery = '') {
                     <button class="btn-icon" title="Advance Paid" style="color: #eb2f96; border-color: #eb2f96;" onclick="openPaymentModal('${client._id}', 'Advance')">
                         <i class="fas fa-hand-holding-usd"></i>
                     </button>
-                    <button class="btn-icon btn-success" title="Follow Up Completed" onclick="updateClientField('${client._id}', 'followup', '')">
+                    <button class="btn-icon btn-success" title="Follow Up Completed" onclick="updateClientFieldFirebase('${client._id}', 'followup', '')">
                         <i class="fas fa-calendar-check"></i>
                     </button>
                     <button class="btn-icon btn-danger" title="Delete Client" onclick="deleteClient('${client._id}')">
@@ -668,19 +534,21 @@ function renderClientsTable(searchQuery = '') {
 }
 
 function renderOverview() {
-    // 1. Total Clients
-    metricTotal.textContent = clientsData.length;
+    const clients = window.firebaseAPI.getClients();
+    
+    // Total Clients
+    metricTotal.textContent = clients.length;
 
-    // 2. Ongoing Work
-    const ongoing = clientsData.filter(c => c.status === 'Ongoing').length;
+    // Ongoing Work
+    const ongoing = clients.filter(c => c.status === 'Ongoing').length;
     metricOngoing.textContent = ongoing;
 
-    // 3. Pending Follow-ups (Overdue + Today)
+    // Pending Follow-ups
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
     let pendingCount = 0;
-    clientsData.forEach(client => {
+    clients.forEach(client => {
         if (client.followup && client.status !== 'Completed' && client.status !== 'Lost') {
             const fDate = new Date(client.followup);
             fDate.setHours(0,0,0,0);
@@ -691,9 +559,9 @@ function renderOverview() {
     });
     metricPending.textContent = pendingCount;
 
-    // 4. Recent Clients Table (Top 5)
+    // Recent Clients Table
     recentClientsTableBody.innerHTML = '';
-    const recentClients = clientsData.slice(0, 5);
+    const recentClients = clients.slice(0, 5);
     
     if (recentClients.length === 0) {
         recentClientsTableBody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--text-secondary);">No recent activity</td></tr>';
@@ -705,35 +573,49 @@ function renderOverview() {
         const fStatus = getFollowupStatusInfo(client.followup);
         
         tr.innerHTML = `
-            <td><span class="client-name">${client.name}</span></td>
-            <td>${client.phone}</td>
-            <td><span class="badge badge-neutral">${client.status}</span></td>
+            <td><span class="client-name">${escapeHtml(client.name)}</span></td>
+            <td>${escapeHtml(client.phone)}</td>
+            <td><span class="badge badge-neutral">${escapeHtml(client.status)}</span></td>
             <td><span class="badge ${fStatus.class}">${fStatus.text}</span></td>
         `;
         recentClientsTableBody.appendChild(tr);
     });
 }
 
-function showLoaders(show) {
-    if (show) {
-        clientsLoader.style.display = 'flex';
-        overviewLoader.style.display = 'flex';
-        allClientsTableBody.style.display = 'none';
-        recentClientsTableBody.style.display = 'none';
-    } else {
-        clientsLoader.style.display = 'none';
-        overviewLoader.style.display = 'none';
-        allClientsTableBody.style.display = '';
-        recentClientsTableBody.style.display = '';
-    }
+function showNotification(message, type = 'info') {
+    // Simple notification (you can enhance this with a toast library if needed)
+    console.log(`[${type.toUpperCase()}] ${message}`);
 }
 
-// Start app
-init();
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
 
-// Ensure global scope for inline event handlers
+// ========== START APP ==========
+// Wait for Firebase to be ready before initializing
+let firebaseReady = false;
+let initTimer = setInterval(() => {
+    if (typeof window.firebaseAPI !== 'undefined') {
+        clearInterval(initTimer);
+        firebaseReady = true;
+        init();
+        console.log('✅ App initialized with Firebase');
+    }
+}, 100);
+
+// Fallback: init after 3 seconds anyway
+setTimeout(() => {
+    if (!firebaseReady) {
+        console.warn('⚠️ Firebase took too long, initializing without it');
+        init();
+    }
+}, 3000);
+
+// Export functions to global scope for inline event handlers
 window.deleteClient = deleteClient;
-window.updateClientField = updateClientField;
+window.updateClientFieldFirebase = updateClientFieldFirebase;
 window.openPaymentModal = openPaymentModal;
 window.viewScreenshot = viewScreenshot;
 window.viewNotes = viewNotes;

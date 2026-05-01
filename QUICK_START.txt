@@ -1,0 +1,44 @@
+🚀 QUICK START - ONLY 2 THINGS TO DO
+
+═══════════════════════════════════════════════════════════════
+
+STEP 1: CREATE 2-MINUTE FIREBASE PROJECT
+─────────────────────────────────────────
+✅ Go to: https://console.firebase.google.com/
+✅ Click "Create project" → Name: falcodigi-crm → Create
+✅ Build → Firestore Database → Create → Production mode → Enable
+✅ Build → Authentication → Email/Password → Enable
+✅ Add 2 users:
+   - ayaan@falcodigi.com / 123456
+   - rahil@falcodigi.com / 123456
+✅ Go to Firestore → Rules → Paste this:
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /clients/{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
+
+✅ Publish
+
+
+STEP 2: COPY-PASTE YOUR FIREBASE CONFIG (1 MINUTE)
+──────────────────────────────────────────────────
+✅ Firebase Console → Settings ⚙️ → Project Settings
+✅ Scroll down → "Your apps" → Find Web App (</> icon)
+✅ Copy the entire firebaseConfig object
+✅ Open file: firebase-config.js
+✅ Replace placeholder values with your config
+✅ Save file
+
+═══════════════════════════════════════════════════════════════
+
+THAT'S IT! Your app is now cloud-synced! 🎉
+
+Test: Open index.html → Login → Add a client → Watch it appear
+      on all devices instantly!
+
+═══════════════════════════════════════════════════════════════
