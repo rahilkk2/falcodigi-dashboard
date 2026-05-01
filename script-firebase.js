@@ -8,6 +8,10 @@ const VALID_USERS = {
     'rahil_fdw123': '123456'
 };
 
+// ========== WEBHOOKS ==========
+const GOOGLE_SHEETS_WEBHOOK = 'https://script.google.com/macros/s/AKfycbyg6CVogAaWTHgQFRaoFwHBKQPeWE46EWsmP4bRFrUd9bdBFB7wNhlLenc-05GDe9GrSA/exec';
+
+
 // ========== DOM ELEMENTS ==========
 const loginView = document.getElementById('login-view');
 const dashboardView = document.getElementById('dashboard-view');
@@ -65,6 +69,27 @@ let confirmCallback = null;
 let pendingPaymentClientId = null;
 let pendingPaymentType = null;
 let currentScreenshotBase64 = null;
+
+// ========== GOOGLE SHEETS BACKUP ==========
+async function backupToGoogleSheets(action, clientData) {
+    if (!GOOGLE_SHEETS_WEBHOOK || GOOGLE_SHEETS_WEBHOOK === 'YOUR_GOOGLE_SHEETS_WEBAPP_URL_HERE') {
+        return;
+    }
+    try {
+        fetch(GOOGLE_SHEETS_WEBHOOK, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: action,
+                timestamp: new Date().toISOString(),
+                client: clientData
+            })
+        });
+    } catch (e) {
+        console.error('Failed to backup to Google Sheets', e);
+    }
+}
 
 // ========== INITIALIZATION ==========
 function init() {
@@ -289,6 +314,9 @@ async function handleAddClient(e) {
     try {
         await window.firebaseAPI.addClient(clientData);
         
+        // Backup to Google Sheets
+        backupToGoogleSheets('ADD', clientData);
+        
         // Clear form and show feedback
         addClientForm.reset();
         
@@ -310,6 +338,13 @@ async function handleAddClient(e) {
 async function updateClientFieldFirebase(id, field, value) {
     try {
         await window.firebaseAPI.updateClient(id, { [field]: value });
+        
+        // Backup to Google Sheets
+        const client = window.firebaseAPI.getClientById(id);
+        if (client) {
+            backupToGoogleSheets('UPDATE', { ...client, [field]: value });
+        }
+        
         // UI will update automatically via real-time listener
     } catch (error) {
         console.error('Error updating client:', error);
@@ -320,6 +355,10 @@ async function updateClientFieldFirebase(id, field, value) {
 async function deleteClientConfirmed(id) {
     try {
         await window.firebaseAPI.deleteClient(id);
+        
+        // Backup to Google Sheets
+        backupToGoogleSheets('DELETE', { _id: id });
+        
         // UI will update automatically via real-time listener
     } catch (error) {
         console.error('Error deleting client:', error);
@@ -399,6 +438,17 @@ async function submitPaymentData(base64String) {
             paymentStatus: pendingPaymentType,
             paymentScreenshot: base64String
         });
+        
+        // Backup to Google Sheets
+        const client = window.firebaseAPI.getClientById(pendingPaymentClientId);
+        if (client) {
+            backupToGoogleSheets('UPDATE', { 
+                ...client, 
+                paymentStatus: pendingPaymentType,
+                paymentScreenshot: base64String
+            });
+        }
+        
         
         confirmPaymentBtn.innerHTML = 'Confirm Payment';
         closePaymentModal();
