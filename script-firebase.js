@@ -291,6 +291,8 @@ async function handleAddClient(e) {
         return;
     }
     
+    const userName = sessionStorage.getItem('fdw_user_name') || 'Unknown';
+    
     const clientData = {
         name: document.getElementById('client-name').value.trim(),
         phone: document.getElementById('client-phone').value.trim(),
@@ -299,7 +301,9 @@ async function handleAddClient(e) {
         priority: document.getElementById('client-priority').value,
         notes: document.getElementById('client-notes').value.trim(),
         paymentStatus: '',
-        paymentScreenshot: ''
+        paymentScreenshot: '',
+        createdAt: new Date().toISOString(),
+        createdBy: userName
     };
 
     // Validate
@@ -312,10 +316,11 @@ async function handleAddClient(e) {
     saveClientBtn.disabled = true;
 
     try {
-        await window.firebaseAPI.addClient(clientData);
+        const newClientId = await window.firebaseAPI.addClient(clientData);
         
         // Backup to Google Sheets
-        backupToGoogleSheets('ADD', clientData);
+        const backupData = { ...clientData, _id: newClientId };
+        backupToGoogleSheets('ADD', backupData);
         
         // Clear form and show feedback
         addClientForm.reset();
